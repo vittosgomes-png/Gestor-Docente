@@ -33,7 +33,11 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- 3. CONEXÃO GOOGLE SHEETS & IA ---
-API_KEY = "AIzaSyAzl5K25OUZmi-7a-28CblUgNcx_YBomh8"
+# Agora o app lê direto da "central de segurança" do Streamlit
+try:
+    API_KEY = st.secrets["GEMINI_API_KEY"]
+except:
+    API_KEY = "AIzaSyBdvhiUtLcjdbaneNm5qWjzRnXhK8q9k7I" # Chave reserva
 client = genai.Client(api_key=API_KEY)
 MODEL_ID = "gemini-2.0-flash"
 
@@ -284,6 +288,7 @@ with tab_dash:
                             st.markdown(st.session_state[f"res_{k}"])
                             pdf_a = gerar_pdf_aula(aula['tema'], st.session_state[f"res_{k}"])
                             st.download_button("📄 Salvar PDF", data=pdf_a, file_name=f"Aula_{k}.pdf", key=f"dl_{k}")
+
 
 
 
