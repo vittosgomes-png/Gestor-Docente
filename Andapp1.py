@@ -1,50 +1,61 @@
-import streamlit as st
-from google import genai
 from google.genai import errors
 from datetime import datetime, date, timedelta
 import io
 import re
+import json
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
+from streamlit_gsheets import GSheetsConnection
 
-# --- 1. DESIGN PROFISSIONAL (Leve & Alta Visibilidade) ---
+# --- 1. DESIGN PROFISSIONAL ---
 st.set_page_config(page_title="Gestor Docente APK", layout="wide")
 
 st.markdown("""
     <style>
-    /* Estilo Global Clean */
     .main { background-color: #ffffff; color: #000000; }
-    
-    /* Botões Padrão (Azul Profundo) */
     .stButton>button { 
-        width: 100%;
-        height: 3.5rem; 
-        background-color: #003366;
-        color: #ffffff !important;
-        border-radius: 10px;
-        font-weight: bold;
-        border: none;
+        width: 100%; height: 3.5rem; background-color: #003366;
+        color: #ffffff !important; border-radius: 10px; font-weight: bold; border: none;
     }
-    
-    /* Métrica Cards (Dashboard) */
     .metric-card { 
         background-color: #f8f9fa; padding: 15px; border-radius: 12px; 
-        text-align: center; border: 1px solid #dee2e6;
-        margin-bottom: 10px;
+        text-align: center; border: 1px solid #dee2e6; margin-bottom: 10px;
     }
     .metric-value { font-size: 24px; font-weight: bold; color: #003366; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. MOTOR DE IA ---
+# --- 2. CONEXÃO GOOGLE SHEETS & IA ---
 API_KEY = "AIzaSyBdvhiUtLcjdbaneNm5qWjzRnXhK8q9k7I"
 client = genai.Client(api_key=API_KEY)
 MODEL_ID = "gemini-2.0-flash"
 
-# --- 3. FUNÇÕES TÉCNICAS (PDF) ---
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# --- 3. FUNÇÕES DE PERSISTÊNCIA (O Tanque de Dados) ---
+def salvar_na_nuvem():
+    # Serializa os dados para texto para caber em uma célula da planilha
+    dados_serializados = json.dumps(st.session_state.dados, default=str)
+    conn.update(worksheet="Sheet1", data=[[dados_serializados]])
+    st.toast("Dados sincronizados com a nuvem! ☁️")
+
+def carregar_da_nuvem():
+    try:
+        df = conn.read(worksheet="Sheet1", usecols=[0], nrows=1)
+        if not df.empty:
+            dados_json = df.iloc[0, 0]
+            # Aqui precisaríamos de um parser mais robusto para datas, 
+            # mas para o MVP vamos focar na estrutura
+            st.session_state.dados = json.loads(dados_json)
+            return True
+    except:
+        return False
+    return False
+
+# --- 4. FUNÇÕES TÉCNICAS (PDF) ---
 def limpar_texto_para_pdf(texto):
     texto = texto.replace('<br>', '\n').replace('<br/>', '\n')
     texto = re.sub(r'\*\*(.*?)\*\*', r'\1', texto)
@@ -82,51 +93,58 @@ def gerar_pdf_aula(tema, conteudo):
     doc.build(elements)
     return buffer.getvalue()
 
-# --- 4. INICIALIZAÇÃO ---
+# --- 5. INICIALIZAÇÃO ---
 if 'dados' not in st.session_state:
-    st.session_state.dados = {
-        "usuario": "", "escolas": {}, "feriados": [],
-        "bimestres": {i: [None, None] for i in range(1, 5)},
-        "ferias_meio": [None, None]
-    }
+    if not carregar_da_nuvem():
+        st.session_state.dados = {
+            "usuario": "", "escolas": {}, "feriados": [],
+            "bimestres": {i: [None, None] for i in range(1, 5)},
+            "ferias_meio": [None, None]
+        }
 
-# --- 5. SIDEBAR ---
+# --- 6. SIDEBAR ---
 with st.sidebar:
     st.header("Configurações 📱")
     st.session_state.dados["usuario"] = st.text_input("Seu Nome", value=st.session_state.dados["usuario"])
     
+    if st.button("☁️ Sincronizar Agora"):
+        salvar_na_nuvem()
+
     with st.expander("🏫 Escolas"):
         n_esc = st.text_input("Nome da Escola")
         d_esc = st.selectbox("Disciplina", ["Ciências", "Matemática", "Português", "História"])
         if st.button("➕ Adicionar Unidade Escolar"):
             if n_esc:
                 st.session_state.dados["escolas"][n_esc] = {"disciplina": d_esc, "turmas": []}
+                salvar_na_nuvem()
                 st.rerun()
         for e in list(st.session_state.dados["escolas"].keys()):
             if st.button(f"🗑️ Remover {e}"):
                 del st.session_state.dados["escolas"][e]
+                salvar_na_nuvem()
                 st.rerun()
 
     with st.expander("📅 Bimestres"):
         for i in range(1, 5):
             st.write(f"**{i}º Bimestre**")
-            st.session_state.dados["bimestres"][i][0] = st.date_input(f"Início B{i}", key=f"bi_{i}")
-            st.session_state.dados["bimestres"][i][1] = st.date_input(f"Fim B{i}", key=f"bf_{i}")
+            st.session_state.dados["bimestres"][i][0] = st.date_input(f"Início B{i}", key=f"bi_{i}", value=st.session_state.dados["bimestres"][i][0])
+            st.session_state.dados["bimestres"][i][1] = st.date_input(f"Fim B{i}", key=f"bf_{i}", value=st.session_state.dados["bimestres"][i][1])
 
     with st.expander("🌴 Férias e Feriados"):
         st.write("**Férias de Julho**")
-        st.session_state.dados["ferias_meio"][0] = st.date_input("Início", key="fi")
-        st.session_state.dados["ferias_meio"][1] = st.date_input("Fim", key="ff")
+        st.session_state.dados["ferias_meio"][0] = st.date_input("Início", key="fi", value=st.session_state.dados["ferias_meio"][0])
+        st.session_state.dados["ferias_meio"][1] = st.date_input("Fim", key="ff", value=st.session_state.dados["ferias_meio"][1])
         st.divider()
         st.write("**Feriados/Recessos**")
         f_data = st.date_input("Bloquear Nova Data")
         if st.button("🙌 Inserir Feriado"):
             if f_data not in st.session_state.dados["feriados"]:
                 st.session_state.dados["feriados"].append(f_data)
+                salvar_na_nuvem()
         for d in sorted(st.session_state.dados["feriados"]):
             st.write(f"• {d.strftime('%d/%m/%Y')}")
 
-# --- 6. PAINEL PRINCIPAL ---
+# --- 7. PAINEL PRINCIPAL ---
 st.title("Gestor Docente")
 
 tab_turmas, tab_plano, tab_dash = st.tabs(["👥 Turmas", "🗓️ Plano", "📈 Dashboard"])
@@ -153,6 +171,7 @@ with tab_turmas:
                     "nome": nome_t, "ano": ano_t, "horarios": st.session_state.temp_horarios.copy(), "planos": {}, "temas_originais": []
                 })
                 st.session_state.temp_horarios = []
+                salvar_na_nuvem()
                 st.success("Turma Salva!")
 
 with tab_plano:
@@ -184,6 +203,7 @@ with tab_plano:
                     for i, (dt, dur) in enumerate(datas_letivas):
                         idx = int((i/len(datas_letivas))*len(temas)) if temas else 0
                         t_obj["planos"][dt.strftime("%Y-%m-%d %H:%M")] = {"data_pura": dt.strftime("%Y-%m-%d"), "tema": temas[idx] if temas else "Revisão", "duracao": dur}
+                    salvar_na_nuvem()
                     st.success("Plano Automático Gerado!")
                 else: st.error("Defina as datas na lateral!")
 
@@ -219,6 +239,7 @@ with tab_dash:
                             try:
                                 resp = client.models.generate_content(model=MODEL_ID, contents=f"Roteiro: {aula['tema']}")
                                 st.session_state[f"res_{k}"] = resp.text
+                                salvar_na_nuvem()
                                 st.rerun()
                             except errors.ClientError: st.warning("Limite atingido.")
                         if f"res_{k}" in st.session_state:
