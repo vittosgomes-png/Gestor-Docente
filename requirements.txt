@@ -2,3 +2,4 @@ streamlit
 google-genai
 reportlab
 pandas
+st-gsheets-connection
