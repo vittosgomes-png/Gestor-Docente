@@ -1,4 +1,5 @@
 import streamlit as st  # <-- ESTA LINHA É OBRIGATÓRIA NO TOPO
+import pandas as pd
 from google import genai
 from google.genai import errors
 from datetime import datetime, date, timedelta
@@ -40,9 +41,12 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- 3. FUNÇÕES DE PERSISTÊNCIA (O Tanque de Dados) ---
 def salvar_na_nuvem():
-    # Serializa os dados para texto para caber em uma célula da planilha
+    # Transformamos o JSON em um DataFrame de uma única célula
     dados_serializados = json.dumps(st.session_state.dados, default=str)
-    conn.update(worksheet="Sheet1", data=[[dados_serializados]])
+    df_save = pd.DataFrame([{"dados": dados_serializados}])
+    
+    # Tentamos atualizar a planilha
+    conn.update(worksheet="Sheet1", data=df_save)
     st.toast("Dados sincronizados com a nuvem! ☁️")
 
 def carregar_da_nuvem():
@@ -249,4 +253,5 @@ with tab_dash:
                             st.markdown(st.session_state[f"res_{k}"])
                             pdf_a = gerar_pdf_aula(aula['tema'], st.session_state[f"res_{k}"])
                             st.download_button("📄 Salvar PDF", data=pdf_a, file_name=f"Aula_{k}.pdf", key=f"dl_{k}")
+
 
