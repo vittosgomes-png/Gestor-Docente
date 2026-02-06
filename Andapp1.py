@@ -49,7 +49,7 @@ def salvar_na_nuvem():
         
         # 2. Tenta salvar (usando 'Sheet1' ou o nome que estiver lá)
         # Se a sua aba se chamar 'Página1', mude o nome abaixo para "Página1"
-        nome_aba = "Sheet1" 
+        nome_aba = "Página1" 
         conn.update(worksheet=nome_aba, data=df_save)
         st.toast("Dados sincronizados com a nuvem! ☁️")
     except Exception as e:
@@ -284,4 +284,5 @@ with tab_dash:
                             st.markdown(st.session_state[f"res_{k}"])
                             pdf_a = gerar_pdf_aula(aula['tema'], st.session_state[f"res_{k}"])
                             st.download_button("📄 Salvar PDF", data=pdf_a, file_name=f"Aula_{k}.pdf", key=f"dl_{k}")
+
 
