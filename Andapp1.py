@@ -47,7 +47,7 @@ def salvar_na_nuvem():
         dados_serializados = json.dumps(st.session_state.dados, default=str)
         df_save = pd.DataFrame([{"dados": dados_serializados}])
         
-        # 2. Tenta salvar (usando 'Sheet1' ou o nome que estiver lá)
+        # 2. Tenta salvar (usando 'Página1' ou o nome que estiver lá)
         # Se a sua aba se chamar 'Página1', mude o nome abaixo para "Página1"
         nome_aba = "Página1" 
         conn.update(worksheet=nome_aba, data=df_save)
@@ -58,7 +58,7 @@ def salvar_na_nuvem():
 
 def carregar_da_nuvem():
     try:
-        nome_aba = "Sheet1"
+        nome_aba = "Página1"
         df = conn.read(worksheet=nome_aba, usecols=[0], nrows=1)
         if not df.empty:
             dados_json = df.iloc[0, 0]
@@ -73,7 +73,7 @@ def carregar_da_nuvem():
 def carregar_da_nuvem():
     try:
         # Lê apenas a primeira linha/célula
-        df = conn.read(worksheet="Sheet1", usecols=[0], nrows=1)
+        df = conn.read(worksheet="Página1", usecols=[0], nrows=1)
         if not df.empty:
             dados_json = df.iloc[0, 0]
             st.session_state.dados = json.loads(dados_json)
@@ -284,5 +284,6 @@ with tab_dash:
                             st.markdown(st.session_state[f"res_{k}"])
                             pdf_a = gerar_pdf_aula(aula['tema'], st.session_state[f"res_{k}"])
                             st.download_button("📄 Salvar PDF", data=pdf_a, file_name=f"Aula_{k}.pdf", key=f"dl_{k}")
+
 
 
