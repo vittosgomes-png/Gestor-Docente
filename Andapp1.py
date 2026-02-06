@@ -1,3 +1,5 @@
+import streamlit as st  # <-- ESTA LINHA É OBRIGATÓRIA NO TOPO
+from google import genai
 from google.genai import errors
 from datetime import datetime, date, timedelta
 import io
@@ -10,9 +12,10 @@ from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from streamlit_gsheets import GSheetsConnection
 
-# --- 1. DESIGN PROFISSIONAL ---
+# CONFIGURAÇÃO DEVE SER O PRIMEIRO COMANDO APÓS OS IMPORTS
 st.set_page_config(page_title="Gestor Docente APK", layout="wide")
 
+# --- 1. DESIGN PROFISSIONAL ---
 st.markdown("""
     <style>
     .main { background-color: #ffffff; color: #000000; }
@@ -246,3 +249,4 @@ with tab_dash:
                             st.markdown(st.session_state[f"res_{k}"])
                             pdf_a = gerar_pdf_aula(aula['tema'], st.session_state[f"res_{k}"])
                             st.download_button("📄 Salvar PDF", data=pdf_a, file_name=f"Aula_{k}.pdf", key=f"dl_{k}")
+
