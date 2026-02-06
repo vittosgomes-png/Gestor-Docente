@@ -1,4 +1,4 @@
-import streamlit as st  # <-- ESTA LINHA É OBRIGATÓRIA NO TOPO
+import streamlit as st
 import pandas as pd
 from google import genai
 from google.genai import errors
@@ -13,10 +13,10 @@ from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from streamlit_gsheets import GSheetsConnection
 
-# CONFIGURAÇÃO DEVE SER O PRIMEIRO COMANDO APÓS OS IMPORTS
+# --- 1. CONFIGURAÇÃO INICIAL (Obrigatório ser o 1º comando) ---
 st.set_page_config(page_title="Gestor Docente APK", layout="wide")
 
-# --- 1. DESIGN PROFISSIONAL ---
+# --- 2. DESIGN PROFISSIONAL ---
 st.markdown("""
     <style>
     .main { background-color: #ffffff; color: #000000; }
@@ -32,37 +32,50 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. CONEXÃO GOOGLE SHEETS & IA ---
+# --- 3. CONEXÃO GOOGLE SHEETS & IA ---
 API_KEY = "AIzaSyBdvhiUtLcjdbaneNm5qWjzRnXhK8q9k7I"
 client = genai.Client(api_key=API_KEY)
 MODEL_ID = "gemini-2.0-flash"
 
-conn = st.connection("gsheets", type=GSheetsConnection)
+# Conexão recalibrada para usar Service Account via Secrets
+conn = st.connection("gsheets", type=GSheetsConnection, ttl=0)
 
-# --- 3. FUNÇÕES DE PERSISTÊNCIA (O Tanque de Dados) ---
+# --- 4. FUNÇÕES DE PERSISTÊNCIA (O Tanque de Dados) ---
 def salvar_na_nuvem():
-    # Transformamos o JSON em um DataFrame de uma única célula
-    dados_serializados = json.dumps(st.session_state.dados, default=str)
-    df_save = pd.DataFrame([{"dados": dados_serializados}])
-    
-    # Tentamos atualizar a planilha
-    conn.update(worksheet="Sheet1", data=df_save)
-    st.toast("Dados sincronizados com a nuvem! ☁️")
+    try:
+        # Serializa tratando datas para formato texto para não quebrar o JSON
+        dados_serializados = json.dumps(st.session_state.dados, default=str)
+        # Cria DataFrame para compatibilidade com GSheets API
+        df_save = pd.DataFrame([{"dados": dados_serializados}])
+        
+        # Sobrescreve a célula A1 da Sheet1
+        conn.update(worksheet="Sheet1", data=df_save)
+        st.toast("Dados sincronizados com a nuvem! ☁️")
+    except Exception as e:
+        st.error(f"Erro de conexão: {e}")
 
 def carregar_da_nuvem():
     try:
+        # Lê apenas a primeira linha/célula
         df = conn.read(worksheet="Sheet1", usecols=[0], nrows=1)
         if not df.empty:
             dados_json = df.iloc[0, 0]
-            # Aqui precisaríamos de um parser mais robusto para datas, 
-            # mas para o MVP vamos focar na estrutura
             st.session_state.dados = json.loads(dados_json)
+            # Re-converte strings de data de volta para objetos date do Python
+            for i in range(1, 5):
+                for j in range(2):
+                    if st.session_state.dados["bimestres"][str(i)][j]:
+                        st.session_state.dados["bimestres"][str(i)][j] = datetime.strptime(st.session_state.dados["bimestres"][str(i)][j], "%Y-%m-%d").date()
+            if st.session_state.dados["ferias_meio"][0]:
+                st.session_state.dados["ferias_meio"][0] = datetime.strptime(st.session_state.dados["ferias_meio"][0], "%Y-%m-%d").date()
+            if st.session_state.dados["ferias_meio"][1]:
+                st.session_state.dados["ferias_meio"][1] = datetime.strptime(st.session_state.dados["ferias_meio"][1], "%Y-%m-%d").date()
             return True
     except:
         return False
     return False
 
-# --- 4. FUNÇÕES TÉCNICAS (PDF) ---
+# --- 5. FUNÇÕES TÉCNICAS (PDF) ---
 def limpar_texto_para_pdf(texto):
     texto = texto.replace('<br>', '\n').replace('<br/>', '\n')
     texto = re.sub(r'\*\*(.*?)\*\*', r'\1', texto)
@@ -100,16 +113,16 @@ def gerar_pdf_aula(tema, conteudo):
     doc.build(elements)
     return buffer.getvalue()
 
-# --- 5. INICIALIZAÇÃO ---
+# --- 6. INICIALIZAÇÃO ---
 if 'dados' not in st.session_state:
     if not carregar_da_nuvem():
         st.session_state.dados = {
             "usuario": "", "escolas": {}, "feriados": [],
-            "bimestres": {i: [None, None] for i in range(1, 5)},
+            "bimestres": {str(i): [None, None] for i in range(1, 5)},
             "ferias_meio": [None, None]
         }
 
-# --- 6. SIDEBAR ---
+# --- 7. SIDEBAR ---
 with st.sidebar:
     st.header("Configurações 📱")
     st.session_state.dados["usuario"] = st.text_input("Seu Nome", value=st.session_state.dados["usuario"])
@@ -134,8 +147,8 @@ with st.sidebar:
     with st.expander("📅 Bimestres"):
         for i in range(1, 5):
             st.write(f"**{i}º Bimestre**")
-            st.session_state.dados["bimestres"][i][0] = st.date_input(f"Início B{i}", key=f"bi_{i}", value=st.session_state.dados["bimestres"][i][0])
-            st.session_state.dados["bimestres"][i][1] = st.date_input(f"Fim B{i}", key=f"bf_{i}", value=st.session_state.dados["bimestres"][i][1])
+            st.session_state.dados["bimestres"][str(i)][0] = st.date_input(f"Início B{i}", key=f"bi_{i}", value=st.session_state.dados["bimestres"][str(i)][0])
+            st.session_state.dados["bimestres"][str(i)][1] = st.date_input(f"Fim B{i}", key=f"bf_{i}", value=st.session_state.dados["bimestres"][str(i)][1])
 
     with st.expander("🌴 Férias e Feriados"):
         st.write("**Férias de Julho**")
@@ -146,12 +159,12 @@ with st.sidebar:
         f_data = st.date_input("Bloquear Nova Data")
         if st.button("🙌 Inserir Feriado"):
             if f_data not in st.session_state.dados["feriados"]:
-                st.session_state.dados["feriados"].append(f_data)
+                st.session_state.dados["feriados"].append(f_data.strftime("%Y-%m-%d"))
                 salvar_na_nuvem()
-        for d in sorted(st.session_state.dados["feriados"]):
-            st.write(f"• {d.strftime('%d/%m/%Y')}")
+        for d_str in sorted(st.session_state.dados["feriados"]):
+            st.write(f"• {datetime.strptime(d_str, '%Y-%m-%d').strftime('%d/%m/%Y')}")
 
-# --- 7. PAINEL PRINCIPAL ---
+# --- 8. PAINEL PRINCIPAL ---
 st.title("Gestor Docente")
 
 tab_turmas, tab_plano, tab_dash = st.tabs(["👥 Turmas", "🗓️ Plano", "📈 Dashboard"])
@@ -169,7 +182,7 @@ with tab_turmas:
         fim_h = st.time_input("Hora Fim")
         if st.button("➕ Adicionar Horário"):
             dur = (datetime.combine(datetime.today(), fim_h) - datetime.combine(datetime.today(), ini_h)).seconds // 60
-            st.session_state.temp_horarios.append({"dia": dia_h, "inicio": ini_h, "fim": fim_h, "duracao": dur})
+            st.session_state.temp_horarios.append({"dia": dia_h, "inicio": str(ini_h), "fim": str(fim_h), "duracao": dur})
         for i, h in enumerate(st.session_state.temp_horarios):
             st.info(f"{d_nome[h['dia']]} | {h['inicio']} - {h['fim']}")
         if st.button("💾 SALVAR TURMA"):
@@ -190,8 +203,8 @@ with tab_plano:
             bimestre_p = st.selectbox("Bimestre Letivo", [1, 2, 3, 4])
             cont_raw = st.text_area("Lista de Conteúdos (Um por linha)")
             if st.button("👨‍💻 DISTRIBUIR CONTEÚDO"):
-                data_ini = st.session_state.dados["bimestres"][bimestre_p][0]
-                data_fim = st.session_state.dados["bimestres"][bimestre_p][1]
+                data_ini = st.session_state.dados["bimestres"][str(bimestre_p)][0]
+                data_fim = st.session_state.dados["bimestres"][str(bimestre_p)][1]
                 if data_ini and data_fim:
                     t_obj = next(t for t in st.session_state.dados["escolas"][esc_p]["turmas"] if t["nome"] == turma_p)
                     temas = [c.strip() for c in cont_raw.split("\n") if c.strip()]
@@ -202,17 +215,19 @@ with tab_plano:
                         is_ferias = False
                         if st.session_state.dados["ferias_meio"][0] and st.session_state.dados["ferias_meio"][1]:
                             is_ferias = st.session_state.dados["ferias_meio"][0] <= curr <= st.session_state.dados["ferias_meio"][1]
-                        if curr.weekday() in [h['dia'] for h in t_obj['horarios']] and not is_ferias and curr not in st.session_state.dados["feriados"]:
+                        
+                        dias_aula = [h['dia'] for h in t_obj['horarios']]
+                        if curr.weekday() in dias_aula and not is_ferias and curr.strftime("%Y-%m-%d") not in st.session_state.dados["feriados"]:
                             for h in t_obj['horarios']:
                                 if curr.weekday() == h['dia']: datas_letivas.append((curr, h['duracao']))
                         curr += timedelta(days=1)
+                    
                     t_obj["planos"] = {}
                     for i, (dt, dur) in enumerate(datas_letivas):
                         idx = int((i/len(datas_letivas))*len(temas)) if temas else 0
                         t_obj["planos"][dt.strftime("%Y-%m-%d %H:%M")] = {"data_pura": dt.strftime("%Y-%m-%d"), "tema": temas[idx] if temas else "Revisão", "duracao": dur}
                     salvar_na_nuvem()
                     st.success("Plano Automático Gerado!")
-                else: st.error("Defina as datas na lateral!")
 
 with tab_dash:
     if st.session_state.dados["escolas"]:
@@ -244,7 +259,7 @@ with tab_dash:
                         aula['tema'] = st.text_input("Ajustar Tema", value=aula['tema'], key=f"ed_{k}")
                         if st.button("🧠 Gerar com IA", key=f"ai_{k}"):
                             try:
-                                resp = client.models.generate_content(model=MODEL_ID, contents=f"Roteiro: {aula['tema']}")
+                                resp = client.models.generate_content(model=MODEL_ID, contents=f"Roteiro de aula sobre {aula['tema']}")
                                 st.session_state[f"res_{k}"] = resp.text
                                 salvar_na_nuvem()
                                 st.rerun()
@@ -253,5 +268,3 @@ with tab_dash:
                             st.markdown(st.session_state[f"res_{k}"])
                             pdf_a = gerar_pdf_aula(aula['tema'], st.session_state[f"res_{k}"])
                             st.download_button("📄 Salvar PDF", data=pdf_a, file_name=f"Aula_{k}.pdf", key=f"dl_{k}")
-
-
